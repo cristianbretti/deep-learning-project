@@ -21,9 +21,6 @@ following directory structure.
   data_dir/image0.jpeg
   data_dir/image1.jpg
   ...
-  label_dir/weird-image.jpeg
-  label_dir/my-image.jpeg
-  ...
 
 This TensorFlow script converts the training and evaluation data into
 a sharded data set consisting of TFRecord files
@@ -41,6 +38,12 @@ import threading
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+import cv2
+
+# TODO: uncomment!
+# inception_model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
+#     include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
+# inception_model.trainable = False
 
 tf.app.flags.DEFINE_integer('num_threads', 4,
                             'Number of threads to preprocess the images.')
@@ -60,19 +63,14 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def _convert_to_example(orig_filename, label_filename, orig_image_buffer, label_image_buffer,
-                        orig_height, orig_width, label_height, label_width):
+def _convert_to_example(orig_filename, orig_image_buffer, orig_height, orig_width):
     """Build an Example proto for an example.
 
     Args:
       orig_filename: string, path to an image file, e.g., '/path/to/example.JPG'
-      label_filename: string, path to an image file, e.g., '/path/to/example.JPG'
       orig_image_buffer: string, JPEG encoding of RGB image
-      label_image_buffer: string, JPEG encoding of RGB image
       orig_height: integer, image height in pixels
       orig_width: integer, image width in pixels
-      label_height: integer, image height in pixels
-      label_width: integer, image width in pixels
     Returns:
       Example proto
     """
@@ -88,14 +86,8 @@ def _convert_to_example(orig_filename, label_filename, orig_image_buffer, label_
         'orig/image/channels': _int64_feature(channels),
         'orig/image/format': _bytes_feature(tf.compat.as_bytes(image_format)),
         'orig/image/filename': _bytes_feature(tf.compat.as_bytes(os.path.basename(orig_filename))),
-        'orig/image/encoded': _bytes_feature(tf.compat.as_bytes(orig_image_buffer)),
-        'label/image/height': _int64_feature(label_height),
-        'label/image/width': _int64_feature(label_width),
-        'label/image/colorspace': _bytes_feature(tf.compat.as_bytes(colorspace)),
-        'label/image/channels': _int64_feature(channels),
-        'label/image/format': _bytes_feature(tf.compat.as_bytes(image_format)),
-        'label/image/filename': _bytes_feature(tf.compat.as_bytes(os.path.basename(label_filename))),
-        'label/image/encoded': _bytes_feature(tf.compat.as_bytes(label_image_buffer))}))
+        'orig/image/encoded': _bytes_feature(tf.compat.as_bytes(orig_image_buffer))
+    }))
     return example
 
 
@@ -164,16 +156,22 @@ def _process_image(filename, coder):
     # Decode the RGB JPEG.
     image = coder.decode_jpeg(image_data)
 
-    # Check that image converted to RGB
-    assert len(image.shape) == 3
-    height = image.shape[0]
-    width = image.shape[1]
-    assert image.shape[2] == 3
+    # TODO: make code have a function that does all this, should return
+    # a encoded image! not decoded!
 
-    return image_data, height, width
+    # image = cv2.resize(image, dsize=(299, 299), interpolation=cv2.INTER_CUBIC)
+    # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # image = image.reshape(1, 299, 299, 3)
+    # predicted = inception_model.predict(image)
+    # predicted = predicted.reshape(8, 8, 1536)
+    # image = image.reshape(299, 299, 3)
+
+    # return image_data, height, width
+    return image_data, 64, 64
 
 
-def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames, label_filenames, num_shards, output_directory):
+def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames, num_shards, output_directory):
     """Processes and saves list of images as TFRecord in 1 thread.
 
     Args:
@@ -183,7 +181,6 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
         analyze in parallel.
       name: string, unique identifier specifying the data set
       orig_filenames: list of strings; each string is a path to an image file
-      label_filenames: list of strings; each string is a path to an image file
       num_shards: integer number of shards for this data set.
     """
     # Each thread produces N shards where N = int(num_shards / num_threads).
@@ -210,16 +207,13 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
         files_in_shard = np.arange(
             shard_ranges[s], shard_ranges[s + 1], dtype=int)
         for i in files_in_shard:
-            orig = orig_filenames[i]
-            label = label_filenames[i]
+            orig_filename = orig_filenames[i]
 
             orig_image_buffer, orig_height, orig_width = _process_image(
-                orig, coder)
-            label_image_buffer, label_height, label_width = _process_image(
-                label, coder)
+                orig_filename, coder)
 
-            example = _convert_to_example(orig, label, orig_image_buffer, label_image_buffer,
-                                          orig_height, orig_width, label_height, label_width)
+            example = _convert_to_example(
+                orig_filename, orig_image_buffer, orig_height, orig_width)
             writer.write(example.SerializeToString())
             shard_counter += 1
             counter += 1
@@ -239,13 +233,12 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
     sys.stdout.flush()
 
 
-def _process_image_files(name, orig_filenames, label_filenames, num_shards, output_directory):
+def _process_image_files(name, orig_filenames, num_shards, output_directory):
     """Process and save list of images as TFRecord of Example protos.
 
     Args:
       name: string, unique identifier specifying the data set
       orig_filenames: list of strings; each string is a path to an image file
-      label_filenames: list of strings; each string is a path to an image file
       num_shards: integer number of shards for this data set.
       output_directory : Directory for output files
     """
@@ -268,8 +261,8 @@ def _process_image_files(name, orig_filenames, label_filenames, num_shards, outp
 
     threads = []
     for thread_index in range(len(ranges)):
-        args = (coder, thread_index, ranges, name, orig_filenames,
-                label_filenames, num_shards, output_directory)
+        args = (coder, thread_index, ranges, name,
+                orig_filenames, num_shards, output_directory)
         t = threading.Thread(target=_process_image_files_batch, args=args)
         t.start()
         threads.append(t)
@@ -281,76 +274,53 @@ def _process_image_files(name, orig_filenames, label_filenames, num_shards, outp
     sys.stdout.flush()
 
 
-def main(orignal_image_folder, label_image_folder, output_directory, num_shards):
+def main(orignal_image_folder, output_directory, num_shards):
 
     orig_img_paths = [os.path.join(orignal_image_folder, im) for im in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, im))]
 
-    label_img_paths = [os.path.join(label_image_folder, im) for im in os.listdir(
-        label_image_folder) if os.path.isfile(os.path.join(label_image_folder, im))]
-
-    _process_image_files("cool", orig_img_paths,
-                         label_img_paths, num_shards, output_directory)
+    _process_image_files("cool", orig_img_paths, num_shards, output_directory)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 5:
-        print("Usage imagesToTfrecords <input_images_folder> <label_images_folder> <output_folder>  <num partitions (multiples of 4)>")
+    if len(sys.argv) < 3:
+        print("Usage image_to_tfrecord <input_images_folder> <num partitions (multiples of 4)>")
     else:
-        main(sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]))
+        main(sys.argv[1], 'test-output', int(sys.argv[2]))
 
 
 # For reading files
 
+# filename = "test-output/cool-00000-of-00004"
+# sess = tf.Session()
 
-filename = "test-output/cool-00000-of-00004"
-sess = tf.Session()
+# for serialized_example in tf.python_io.tf_record_iterator(filename):
+#     example = tf.train.Example()
+#     example.ParseFromString(serialized_example)
 
-for serialized_example in tf.python_io.tf_record_iterator(filename):
-    example = tf.train.Example()
-    example.ParseFromString(serialized_example)
+#     # traverse the Example format to get data
+#     img = example.features.feature['origimage/encoded']
 
-    # traverse the Example format to get data
-    img = example.features.feature['origimage/encoded']
+#     # get the data out of tf record
+#     orignal_image_height = example.features.feature['orig/image/height']
+#     orignal_image_width = example.features.feature['orig/image/width']
+#     orignal_image_colors = example.features.feature['orig/image/colorspace']
+#     orignal_image_channels = example.features.feature['orig/image/channels']
+#     orignal_image_format = example.features.feature['orig/image/format']
+#     orignal_image_filename = example.features.feature['orig/image/filename']
+#     orignal_image_data = example.features.feature['orig/image/encoded']
 
-    # get the data out of tf record
-    orignal_image_height = example.features.feature['orig/image/height']
-    orignal_image_width = example.features.feature['orig/image/width']
-    orignal_image_colors = example.features.feature['orig/image/colorspace']
-    orignal_image_channels = example.features.feature['orig/image/channels']
-    orignal_image_format = example.features.feature['orig/image/format']
-    orignal_image_filename = example.features.feature['orig/image/filename']
-    orignal_image_data = example.features.feature['orig/image/encoded']
+#     orignal_image = sess.run(tf.image.decode_jpeg(
+#         orignal_image_data.bytes_list.value[0], channels=3))
 
-    noisy_image_height = example.features.feature['label/image/height']
-    noisy_image_width = example.features.feature['label/image/width']
-    noisy_image_colors = example.features.feature['label/image/colorspace']
-    noisy_image_channels = example.features.feature['label/image/channels']
-    noisy_image_format = example.features.feature['label/image/format']
-    noisy_image_filename = example.features.feature['label/image/filename']
-    noisy_image_data = example.features.feature['label/image/encoded']
+#     plt.subplot(111)
+#     plt.title("Image Name : " + str(orignal_image_filename.bytes_list.value[0]) + "\n" +
+#               "Image Height : " + str(orignal_image_height.int64_list.value[0]) + "\n" +
+#               "Image Weight : " + str(orignal_image_width.int64_list.value[0]) + "\n" +
+#               "Image ColourSpace : " + str(orignal_image_colors.bytes_list.value[0]) + "\n" +
+#               "Image Channels : " + str(orignal_image_channels.int64_list.value[0]) + "\n" +
+#               "Image format : " + str(orignal_image_format.bytes_list.value[0]) + "\n")
+#     plt.imshow(orignal_image)
 
-    orignal_image = sess.run(tf.image.decode_jpeg(
-        orignal_image_data.bytes_list.value[0], channels=3))
-    noisy_image = sess.run(tf.image.decode_jpeg(
-        noisy_image_data.bytes_list.value[0], channels=3))
-
-    plt.subplot(121)
-    plt.title("Image Name : " + str(orignal_image_filename.bytes_list.value[0]) + "\n" +
-              "Image Height : " + str(orignal_image_height.int64_list.value[0]) + "\n" +
-              "Image Weight : " + str(orignal_image_width.int64_list.value[0]) + "\n" +
-              "Image ColourSpace : " + str(orignal_image_colors.bytes_list.value[0]) + "\n" +
-              "Image Channels : " + str(orignal_image_channels.int64_list.value[0]) + "\n" +
-              "Image format : " + str(orignal_image_format.bytes_list.value[0]) + "\n")
-    plt.imshow(orignal_image)
-
-    plt.subplot(122)
-    plt.title("Image Name : " + str(noisy_image_filename.bytes_list.value[0]) + "\n" +
-              "Image Height : " + str(noisy_image_height.int64_list.value[0]) + "\n" +
-              "Image Weight : " + str(noisy_image_width.int64_list.value[0]) + "\n" +
-              "Image ColourSpace : " + str(noisy_image_colors.bytes_list.value[0]) + "\n" +
-              "Image Channels : " + str(noisy_image_channels.int64_list.value[0]) + "\n" +
-              "Image format : " + str(noisy_image_format.bytes_list.value[0]) + "\n")
-    plt.imshow(noisy_image)
-    plt.show()
-    break
+#     plt.show()
+#     break
