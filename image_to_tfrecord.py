@@ -40,7 +40,6 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import cv2
 
-# TODO: uncomment!
 # inception_model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
 #     include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
 # inception_model.trainable = False
@@ -63,14 +62,19 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def _convert_to_example(orig_filename, orig_image_buffer, orig_height, orig_width):
+def _float_feature(value):
+    """Returns a float_list from a float / double."""
+    return tf.train.Feature(float_list=tf.train.FloatList(value=value))
+
+
+def _convert_to_example(orig_filename, orig_image_data, grayscale_data, predicted_data):
     """Build an Example proto for an example.
 
     Args:
       orig_filename: string, path to an image file, e.g., '/path/to/example.JPG'
-      orig_image_buffer: string, JPEG encoding of RGB image
-      orig_height: integer, image height in pixels
-      orig_width: integer, image width in pixels
+      orig_image_data: string, JPEG encoding of RGB image
+      grayscale_data: string, JPEG encoding of RGB grayscale image
+      predicted_data: string, JPEG encoding of RGB predicted image
     Returns:
       Example proto
     """
@@ -79,14 +83,16 @@ def _convert_to_example(orig_filename, orig_image_buffer, orig_height, orig_widt
     channels = 3
     image_format = 'JPEG'
 
+    predicted_data = np.reshape(predicted_data, (8*8*1536))
+
     example = tf.train.Example(features=tf.train.Features(feature={
-        'orig/image/height': _int64_feature(orig_height),
-        'orig/image/width': _int64_feature(orig_width),
-        'orig/image/colorspace': _bytes_feature(tf.compat.as_bytes(colorspace)),
-        'orig/image/channels': _int64_feature(channels),
-        'orig/image/format': _bytes_feature(tf.compat.as_bytes(image_format)),
-        'orig/image/filename': _bytes_feature(tf.compat.as_bytes(os.path.basename(orig_filename))),
-        'orig/image/encoded': _bytes_feature(tf.compat.as_bytes(orig_image_buffer))
+        'colorspace': _bytes_feature(tf.compat.as_bytes(colorspace)),
+        'channels': _int64_feature(channels),
+        'format': _bytes_feature(tf.compat.as_bytes(image_format)),
+        'filename': _bytes_feature(tf.compat.as_bytes(os.path.basename(orig_filename))),
+        'orig/image/encoded': _bytes_feature(tf.compat.as_bytes(orig_image_data)),
+        'grayscale/image/encoded': _bytes_feature(tf.compat.as_bytes(grayscale_data)),
+        'predicted/image/encoded': _float_feature(predicted_data),
     }))
     return example
 
@@ -109,6 +115,24 @@ class ImageCoder(object):
         self._decode_jpeg = tf.image.decode_jpeg(
             self._decode_jpeg_data, channels=3)
 
+        # Initializes function that encodes RGB JPEG data.
+        self._encode_jpeg_data = tf.placeholder(dtype=tf.uint8)
+        self._encode_jpeg = tf.image.encode_jpeg(
+            self._encode_jpeg_data, format='rgb', quality=100)
+
+        # Initializes function that resizes and grayscales data.
+        self._small_image = tf.placeholder(dtype=tf.string)
+        temp = tf.image.decode_jpeg(self._small_image, channels=3)
+        temp = tf.reshape(temp, (1, 64, 64, 3))
+        big = tf.image.resize_nearest_neighbor(temp, (299, 299))
+        big = tf.reshape(big, (299, 299, 3))
+
+        grayscaled_temp = tf.image.rgb_to_grayscale(big)
+        self.grayscaled = tf.image.encode_jpeg(
+            grayscaled_temp, format='grayscale', quality=100)
+        self._big_image = tf.image.encode_jpeg(
+            big, format='rgb', quality=100)
+
     def png_to_jpeg(self, image_data):
         return self._sess.run(self._png_to_jpeg,
                               feed_dict={self._png_data: image_data})
@@ -119,6 +143,23 @@ class ImageCoder(object):
         assert len(image.shape) == 3
         assert image.shape[2] == 3
         return image
+
+    def resize_and_grayscale(self, image_data):
+        image, gray = self._sess.run([self._big_image, self.grayscaled],
+                                     feed_dict={self._small_image: image_data})
+        return image, gray
+
+    def encode_jpeg(self, image):
+        encoded = self._sess.run(self._encode_jpeg,
+                                 feed_dict={self._encode_jpeg_data: image})
+        return encoded
+
+    # def predict(self, image):
+    #     with self._sess.as_default():
+    #         with self._graph.as_default():
+    #             predicted = self._model.predict(image)
+    #             predicted = predicted.reshape(8, 8, 1536)
+    #             return predicted
 
 
 def _is_png(filename):
@@ -133,7 +174,7 @@ def _is_png(filename):
     return '.png' in filename
 
 
-def _process_image(filename, coder):
+def _process_image(filename, coder, model):
     """Process a single image file.
 
     Args:
@@ -154,21 +195,17 @@ def _process_image(filename, coder):
         image_data = coder.png_to_jpeg(image_data)
 
     # Decode the RGB JPEG.
+    # image = coder.decode_jpeg(image_data)
+
+    image_data, gray_data = coder.resize_and_grayscale(image_data)
+
     image = coder.decode_jpeg(image_data)
-
-    # TODO: make code have a function that does all this, should return
-    # a encoded image! not decoded!
-
-    # image = cv2.resize(image, dsize=(299, 299), interpolation=cv2.INTER_CUBIC)
-    # gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # image = image.reshape(1, 299, 299, 3)
-    # predicted = inception_model.predict(image)
-    # predicted = predicted.reshape(8, 8, 1536)
-    # image = image.reshape(299, 299, 3)
+    image = image.reshape(1, 299, 299, 3)
+    predicted = model.predict(image)
+    predicted_data = predicted.reshape(8, 8, 1536)
 
     # return image_data, height, width
-    return image_data, 64, 64
+    return image_data, gray_data, predicted_data
 
 
 def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames, num_shards, output_directory):
@@ -186,6 +223,11 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
     # Each thread produces N shards where N = int(num_shards / num_threads).
     # For instance, if num_shards = 128, and the num_threads = 2, then the first
     # thread would produce shards [0, 64).
+
+    model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
+        include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
+    model.trainable = False
+
     num_threads = len(ranges)
     assert not num_shards % num_threads
     num_shards_per_batch = int(num_shards / num_threads)
@@ -199,7 +241,8 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
     for s in range(num_shards_per_batch):
         # Generate a sharded version of the file name, e.g. 'train-00002-of-00010'
         shard = thread_index * num_shards_per_batch + s
-        output_filename = '%s-%.5d-of-%.5d' % (name, shard, num_shards)
+        output_filename = '%s-%.5d-of-%.5d.tfrecord' % (
+            name, shard, num_shards)
         output_file = os.path.join(output_directory, output_filename)
         writer = tf.python_io.TFRecordWriter(output_file)
 
@@ -209,11 +252,11 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
         for i in files_in_shard:
             orig_filename = orig_filenames[i]
 
-            orig_image_buffer, orig_height, orig_width = _process_image(
-                orig_filename, coder)
+            orig_image_data, grayscale_data, predicted_data = _process_image(
+                orig_filename, coder, model)
 
             example = _convert_to_example(
-                orig_filename, orig_image_buffer, orig_height, orig_width)
+                orig_filename, orig_image_data, grayscale_data, predicted_data)
             writer.write(example.SerializeToString())
             shard_counter += 1
             counter += 1
@@ -291,36 +334,46 @@ if __name__ == '__main__':
 
 # For reading files
 
-# filename = "test-output/cool-00000-of-00004"
-# sess = tf.Session()
+filename = "test-output/cool-00000-of-00004"
+sess = tf.Session()
 
-# for serialized_example in tf.python_io.tf_record_iterator(filename):
-#     example = tf.train.Example()
-#     example.ParseFromString(serialized_example)
+for serialized_example in tf.python_io.tf_record_iterator(filename):
+    example = tf.train.Example()
+    example.ParseFromString(serialized_example)
 
-#     # traverse the Example format to get data
-#     img = example.features.feature['origimage/encoded']
+    # traverse the Example format to get data
+    img = example.features.feature['origimage/encoded']
 
-#     # get the data out of tf record
-#     orignal_image_height = example.features.feature['orig/image/height']
-#     orignal_image_width = example.features.feature['orig/image/width']
-#     orignal_image_colors = example.features.feature['orig/image/colorspace']
-#     orignal_image_channels = example.features.feature['orig/image/channels']
-#     orignal_image_format = example.features.feature['orig/image/format']
-#     orignal_image_filename = example.features.feature['orig/image/filename']
-#     orignal_image_data = example.features.feature['orig/image/encoded']
+    # get the data out of tf record
+    colors = example.features.feature['colorspace']
+    channels = example.features.feature['channels']
+    image_format = example.features.feature['format']
+    filename = example.features.feature['filename']
+    orignal_image_data = example.features.feature['orig/image/encoded']
+    grayscale_image_data = example.features.feature['grayscale/image/encoded']
+    predicted_data = example.features.feature['predicted/image/encoded']
 
-#     orignal_image = sess.run(tf.image.decode_jpeg(
-#         orignal_image_data.bytes_list.value[0], channels=3))
+    orignal_image = sess.run(tf.image.decode_jpeg(
+        orignal_image_data.bytes_list.value[0], channels=3))
+    grayscale_image = sess.run(tf.image.decode_jpeg(
+        grayscale_image_data.bytes_list.value[0], channels=1))
 
-#     plt.subplot(111)
-#     plt.title("Image Name : " + str(orignal_image_filename.bytes_list.value[0]) + "\n" +
-#               "Image Height : " + str(orignal_image_height.int64_list.value[0]) + "\n" +
-#               "Image Weight : " + str(orignal_image_width.int64_list.value[0]) + "\n" +
-#               "Image ColourSpace : " + str(orignal_image_colors.bytes_list.value[0]) + "\n" +
-#               "Image Channels : " + str(orignal_image_channels.int64_list.value[0]) + "\n" +
-#               "Image format : " + str(orignal_image_format.bytes_list.value[0]) + "\n")
-#     plt.imshow(orignal_image)
+    plt.subplot(121)
+    plt.title("Image Name : " + str(filename.bytes_list.value[0]) + "\n" +
+              "Image ColourSpace : " + str(colors.bytes_list.value[0]) + "\n" +
+              "Image Channels : " + str(channels.int64_list.value[0]) + "\n" +
+              "Image format : " + str(image_format.bytes_list.value[0]) + "\n")
+    plt.imshow(orignal_image)
 
-#     plt.show()
-#     break
+    orignal_image = sess.run(tf.image.decode_jpeg(
+        orignal_image_data.bytes_list.value[0], channels=3))
+
+    plt.subplot(122)
+    plt.title("Image Name : " + str(filename.bytes_list.value[0]) + "\n" +
+              "Image ColourSpace : " + str(colors.bytes_list.value[0]) + "\n" +
+              "Image Channels : " + str(channels.int64_list.value[0]) + "\n" +
+              "Image format : " + str(image_format.bytes_list.value[0]) + "\n")
+    plt.imshow(grayscale_image)
+
+    plt.show()
+    break
