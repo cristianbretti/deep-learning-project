@@ -14,7 +14,7 @@ if __name__ == "__main__":
     n_epochs = 1
     batch_size = 1
 
-    iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=False)
+    iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=True)
     colorizer = Colorizer(iterator)
     new_image_node, example_node = colorizer.showcase()
 
