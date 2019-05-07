@@ -20,17 +20,21 @@ class Colorizer():
         self.output_layer_shape_9 = (self.batch_size, 299, 299, 2)
 
         self.filter_conv_1 = tf.Variable(tf.random_normal(
-            [3, 3, 1536, 256]), name="filter_conv_1")
+            [3, 3, 1536, 256], stddev=np.sqrt(2 / (1536 + 256))),  name="filter_conv_1")
         self.filter_conv_2 = tf.Variable(tf.random_normal(
-            [3, 3, 256, 128]), name="filter_conv_2")
+            [3, 3, 256, 128], stddev=np.sqrt(2 / (128 + 256))),  name="filter_conv_2")
         self.filter_conv_4 = tf.Variable(
-            tf.random_normal([3, 3, 128, 64]), name="filter_conv_4")
+            tf.random_normal([3, 3, 128, 64], stddev=np.sqrt(
+                2 / (128 + 64))),  name="filter_conv_4")
         self.filter_conv_5 = tf.Variable(
-            tf.random_normal([3, 3, 64, 32]), name="filter_conv_5")
+            tf.random_normal([3, 3, 64, 32], stddev=np.sqrt(
+                2 / (64 + 32))),  name="filter_conv_5")
         self.filter_conv_7 = tf.Variable(
-            tf.random_normal([3, 3, 32, 8]), name="filter_conv_7")
+            tf.random_normal([3, 3, 32, 8], stddev=np.sqrt(
+                2 / (32 + 8))),  name="filter_conv_7")
         self.filter_conv_9 = tf.Variable(
-            tf.random_normal([3, 3, 8, 2]), name="filter_conv_9")
+            tf.random_normal([3, 3, 8, 2], stddev=np.sqrt(
+                2 / (8 + 2))),  name="filter_conv_9")
 
     def upscale(self, predicted):
         predicted = tf.reshape(predicted, self.resnet_preprocessed_shape)
@@ -76,14 +80,16 @@ class Colorizer():
         ab_channels_real = example['ab_channels'].values
         ab_channels_real = tf.reshape(
             ab_channels_real, self.output_layer_shape_9)
-        loss = tf.losses.mean_squared_error(
-            ab_channels_real, new_image)
+        # loss = tf.losses.mean_squared_error(
+        loss = tf.reduce_mean(
+            tf.squared_difference(
+                ab_channels_real, new_image))
         return loss
 
     def training_op(self):
         next_example = self.iterator.get_next()
         loss = self.loss_function(next_example)
-        optimizer = tf.train.AdamOptimizer(learning_rate=0.1).minimize(loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate=0.0001).minimize(loss)
         return optimizer, loss
 
     def showcase(self):
