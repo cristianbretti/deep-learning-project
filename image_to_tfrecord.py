@@ -260,7 +260,7 @@ def main(output_directory, num_shards):
         folder_names = f.readlines()
         orig_img_paths = []
         start = 0
-        how_many = 2
+        how_many = 1  # 2
         for i in range(start, start + how_many):
             orignal_image_folder = 'datasets/tiny-imagenet-200/train/' + \
                 folder_names[i].strip() + '/images'
