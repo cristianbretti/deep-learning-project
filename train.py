@@ -5,18 +5,19 @@ import matplotlib.pyplot as plt
 from colorizer import Colorizer, DatasetIterator
 
 if __name__ == "__main__":
-    orignal_image_folder = 'datasets/preprocessed_1000'
+    orignal_image_folder = 'datasets/preprocessed_fish'
 
     filenames = [os.path.join(orignal_image_folder, record) for record in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
 
-    n_tot = 1000
-    n_epochs = 2
-    batch_size = 50
+    n_tot = 100
+    n_epochs = 100
+    batch_size = 1
     learning_rate = 0.0001
 
     iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=True)
     colorizer = Colorizer(iterator, learning_rate)
+    predicted_node, ab_channels_real_node = colorizer.prepare_next_data_batch()
     optimizer, loss_node = colorizer.training_op()
 
     saver = tf.train.Saver()
@@ -42,9 +43,19 @@ if __name__ == "__main__":
                     if save:
                         saver.save(sess, 'models/my-model')
                         print("model saved on epoch %d" % epoch)
+                predicted, labels = sess.run(
+                    [predicted_node, ab_channels_real_node])
+
+                # set values between 0 and 254
+                # ab_channels_real = ab_channels_real * 127 + 127
+                # labels = colorizer.ab_to_bin(ab_channels_real)
 
                 _, loss = sess.run(
-                    [optimizer, loss_node])
+                    [optimizer, loss_node],
+                    feed_dict={
+                        colorizer.predicted_input: predicted,
+                        colorizer.labels: labels
+                    })
 
                 if not count % (1 * batch_size):
                     print("batch with count %d had loss: %f" % (count, loss))

@@ -6,13 +6,13 @@ from skimage import color
 from colorizer import Colorizer, DatasetIterator
 
 if __name__ == "__main__":
-    orignal_image_folder = 'datasets/preprocessed_1000'
+    orignal_image_folder = 'datasets/preprocessed_fish'
 
     filenames = [os.path.join(orignal_image_folder, record) for record in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
 
     n_epochs = 1
-    batch_size = 10
+    batch_size = 1
 
     iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=False)
     colorizer = Colorizer(iterator)

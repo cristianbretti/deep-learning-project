@@ -14,7 +14,12 @@ class Colorizer():
 
         self.resnet_preprocessed_shape = (self.batch_size, 8, 8, 1536)
         self.out_network_shape = (self.batch_size, 299, 299, 2)
-        self.out_image_size = (299, 299)  # UPSAMPLE
+        self.out_image_size = (299, 299)
+
+        self.predicted_input = tf.placeholder(
+            dtype=tf.float32, shape=self.resnet_preprocessed_shape)
+        self.labels = tf.placeholder(
+            dtype=tf.float32, shape=self.out_network_shape)
 
         self._upscale = self._build_upscale()
 
@@ -22,15 +27,9 @@ class Colorizer():
         """
         Upscale Network architecture
         input   = (8, 8, 1536)
-        layer_1 = (8, 8, 256)
-        layer_2 = (8, 8, 128)
-        layer_3 = (32, 32, 128)   # UPSAMPLE
-        layer_4 = (32, 32, 64)
-        layer_5 = (32, 32, 32)
-        layer_6 = (128, 128, 32)  # UPSAMPLE
-        layer_7 = (128, 128, 8)
-        layer_8 = (256, 256, 8)   # UPSAMPLE
-        layer_9 = (256, 256, 2)
+        layer_1 = (16, 16, 768)
+        layer_2 = (32, 32, 384)
+        layer_3 = (64, 64, 289)
         """
         model = Sequential(name='upscale_model')
         model.add(InputLayer(batch_input_shape=self.resnet_preprocessed_shape))
@@ -51,33 +50,56 @@ class Colorizer():
         return model
 
     def upscale(self, predicted):
-        predicted = tf.reshape(predicted, self.resnet_preprocessed_shape)
         predicted = tf.nn.relu(predicted)
         upscaled = self._upscale(predicted)
         new_image = tf.image.resize_nearest_neighbor(
             upscaled, self.out_image_size)
         return new_image
 
-    def loss_function(self, example):
-        new_image = self.upscale(example['predicted'].values)
-        ab_channels_real = example['ab_channels'].values
-        ab_channels_real = tf.reshape(ab_channels_real, self.out_network_shape)
+    def loss_function(self, predicted, labels):
+        new_image = self.upscale(predicted)
         loss = tf.reduce_mean(
             tf.squared_difference(
-                ab_channels_real, new_image))
+                labels, new_image))
         return loss
 
+    def prepare_next_data_batch(self):
+        example = self.iterator.get_next()
+        predicted = example['predicted'].values
+        predicted = tf.reshape(predicted, self.resnet_preprocessed_shape)
+
+        ab_channels_real = example['ab_channels'].values
+        ab_channels_real = tf.reshape(
+            ab_channels_real, self.out_network_shape)
+        return predicted, ab_channels_real
+
     def training_op(self):
-        next_example = self.iterator.get_next()
-        loss = self.loss_function(next_example)
+        loss = self.loss_function(
+            self.predicted_input, self.labels)
         optimizer = tf.train.AdamOptimizer(
             learning_rate=self.learning_rate).minimize(loss)
         return optimizer, loss
 
     def showcase(self):
         example = self.iterator.get_next()
-        new_image = self.upscale(example['predicted'].values)
+        predicted = example['predicted'].values
+        predicted = tf.reshape(predicted, self.resnet_preprocessed_shape)
+        new_image = self.upscale(predicted)
         return new_image, example
+
+    def ab_to_bin(self, ab_channels):
+        ab_channels = np.floor(ab_channels / 15)
+        labels = ab_channels[:, :, :, 0] * 17 + ab_channels[:, :, :, 1]
+        return labels.reshape(labels.shape[0], labels.shape[1], labels.shape[2], 1)
+
+    def bin_to_ab(self, bins):
+        # (batch, 299, 299, 1)
+        a_values = np.floor(bins / 17) * 15
+        b_values = np.mod(bins, 17) * 15
+
+        ab_channels = np.concatenate((a_values, b_values), axis=3)
+        ab_channels = ab_channels - 127
+        return ab_channels
 
 
 class DatasetIterator():
