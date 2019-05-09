@@ -41,10 +41,6 @@ import matplotlib.pyplot as plt
 import cv2
 from skimage import color
 
-# inception_model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
-#     include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
-# inception_model.trainable = False
-
 tf.app.flags.DEFINE_integer('num_threads', 4,
                             'Number of threads to preprocess the images.')
 
@@ -68,7 +64,7 @@ def _float_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
-def _convert_to_example(filename, l_channel, ab_channels, predicted_data):
+def _convert_to_example(filename, l_channel, one_hot, predicted_data):
     """Build an Example proto for an example.
 
     Args:
@@ -84,7 +80,7 @@ def _convert_to_example(filename, l_channel, ab_channels, predicted_data):
     example = tf.train.Example(features=tf.train.Features(feature={
         'filename': _bytes_feature(tf.compat.as_bytes(os.path.basename(filename))),
         'l_channel': _float_feature(l_channel.flatten()),
-        'ab_channels': _float_feature(ab_channels.flatten()),
+        'one_hot': _float_feature(one_hot.flatten()),
         'predicted': _float_feature(predicted_data.flatten()),
     }))
     return example
@@ -134,13 +130,25 @@ def _process_image(filename, coder, model):
     image, gray_stacked = coder.resize_and_grayscale(
         image_data)
 
-    predicted_data = model.predict(gray_stacked)
+    if model:
+        predicted_data = model.predict(gray_stacked)
 
     lab = color.rgb2lab(image).astype(np.float32)
     l_channel = 2 * lab[:, :, 0] / 100 - 1
-    ab_channels = lab[:, :, 1:] / 127
+    ab_channels = lab[:, :, 1:]
 
-    return l_channel, ab_channels, predicted_data
+    ab_channels = ab_channels + 127  # set values between 0 and 254
+    ab_channels = np.floor(ab_channels / 15)
+    labels = ab_channels[:, :, 0] * 17 + ab_channels[:, :, 1]
+
+    # make one hot
+    labels = labels.astype(int)
+    one_hot_labels = np.zeros((299, 299, 289))
+    for i in range(299):
+        for j in range(299):
+            one_hot_labels[i][j][labels[i, j]] = 1
+
+    return l_channel, one_hot_labels, predicted_data
 
 
 def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames, num_shards, output_directory):
@@ -168,12 +176,15 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
                                num_shards_per_batch + 1).astype(int)
     num_files_in_thread = ranges[thread_index][1] - ranges[thread_index][0]
 
-    model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
-        include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
-    model.trainable = False
-    print("Load model done")
-    print("time taken")
-    print(datetime.now() - zero_time)
+    if True:
+        model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
+            include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
+        model.trainable = False
+        print("Load model done")
+        print("time taken")
+        print(datetime.now() - zero_time)
+    else:
+        model = None
 
     counter = 0
     for s in range(num_shards_per_batch):
@@ -190,11 +201,11 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
         for i in files_in_shard:
             orig_filename = orig_filenames[i]
 
-            l_channel, ab_channels, predicted_data = _process_image(
+            l_channel, one_hot, predicted_data = _process_image(
                 orig_filename, coder, model)
 
             example = _convert_to_example(
-                orig_filename, l_channel, ab_channels, predicted_data)
+                orig_filename, l_channel, one_hot, predicted_data)
             writer.write(example.SerializeToString())
             shard_counter += 1
             counter += 1
@@ -259,15 +270,15 @@ def main(output_directory, num_shards):
     with open('datasets/tiny-imagenet-200/wnids.txt', 'r') as f:
         folder_names = f.readlines()
         orig_img_paths = []
-        start = 11
-        how_many = 9
+        start = 0
+        how_many = 20
         for i in range(start, start + how_many):
             orignal_image_folder = 'datasets/tiny-imagenet-200/train/' + \
                 folder_names[i].strip() + '/images'
             orig_img_paths += [os.path.join(orignal_image_folder, im) for im in os.listdir(
                 orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, im))]
 
-        _process_image_files("cool", orig_img_paths,
+        _process_image_files("train", orig_img_paths,
                              num_shards, output_directory)
 
         print("Started at %d and did %d folders, last one was %s" %

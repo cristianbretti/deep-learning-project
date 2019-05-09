@@ -3,21 +3,24 @@ import os
 import tensorflow as tf
 import matplotlib.pyplot as plt
 from colorizer import Colorizer, DatasetIterator
+import time
+
 
 if __name__ == "__main__":
-    orignal_image_folder = 'datasets/preprocessed_fish'
+    orignal_image_folder = 'datasets/preprocessed'
 
     filenames = [os.path.join(orignal_image_folder, record) for record in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
 
-    n_tot = 100
-    n_epochs = 100
+    n_tot = 50
+    n_epochs = 50
     batch_size = 1
+    # assert not batch_size % n_tot
     learning_rate = 0.0001
 
     iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=True)
     colorizer = Colorizer(iterator, learning_rate)
-    predicted_node, ab_channels_real_node = colorizer.prepare_next_data_batch()
+    # predicted_node, one_hot_node, labels_node, one_hot_data_node = colorizer.prepare_next_data_batch()
     optimizer, loss_node = colorizer.training_op()
 
     saver = tf.train.Saver()
@@ -28,6 +31,10 @@ if __name__ == "__main__":
     count = 0
     epoch = 0
     losses = []
+
+    total_bin_ab_time = 0
+    total_train_time = 0
+
     with tf.Session() as sess:
         if load:
             saver.restore(sess, 'models/my-model')
@@ -43,19 +50,20 @@ if __name__ == "__main__":
                     if save:
                         saver.save(sess, 'models/my-model')
                         print("model saved on epoch %d" % epoch)
-                predicted, labels = sess.run(
-                    [predicted_node, ab_channels_real_node])
 
-                # set values between 0 and 254
-                # ab_channels_real = ab_channels_real * 127 + 127
+                # predicted, one_hot, labels, one_hot_data = sess.run(
+                #     [predicted_node, one_hot_node, labels_node, one_hot_data_node])
+
                 # labels = colorizer.ab_to_bin(ab_channels_real)
 
                 _, loss = sess.run(
-                    [optimizer, loss_node],
-                    feed_dict={
-                        colorizer.predicted_input: predicted,
-                        colorizer.labels: labels
-                    })
+                    [optimizer, loss_node])
+
+                # ,
+                # feed_dict={
+                #     colorizer.predicted_input: predicted,
+                #     colorizer.labels: labels
+                # })
 
                 if not count % (1 * batch_size):
                     print("batch with count %d had loss: %f" % (count, loss))
