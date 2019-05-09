@@ -12,7 +12,7 @@ if __name__ == "__main__":
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
 
     n_epochs = 1
-    batch_size = 1
+    batch_size = 10
 
     iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=False)
     colorizer = Colorizer(iterator)
@@ -32,8 +32,8 @@ if __name__ == "__main__":
         for i in range(batch_size):
 
             new_ab = new_ab_list[i].reshape((299, 299, 2))
-            print(new_ab)
             new_ab = (new_ab)*127
+            print(new_ab)
 
             l_channel = l_channel_list[i]
             real_ab = real_ab_list[i]

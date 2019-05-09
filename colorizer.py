@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 from skimage import color
 
-from tensorflow.keras.layers import Conv2D, UpSampling2D, InputLayer
+from tensorflow.keras.layers import Conv2D, UpSampling2D, InputLayer, BatchNormalization, Dropout
 from tensorflow.keras.models import Sequential
 
 
@@ -34,14 +34,19 @@ class Colorizer():
         """
         model = Sequential(name='upscale_model')
         model.add(InputLayer(batch_input_shape=self.resnet_preprocessed_shape))
-        model.add(Conv2D(256, (3, 3), activation='relu', padding='same'))
+        model.add(Dropout(0.2))
+        model.add(BatchNormalization(axis=3))
+        # model.add(Conv2D(256, (3, 3), activation='relu', padding='same'))
         model.add(Conv2D(128, (3, 3), activation='relu', padding='same'))
+        model.add(BatchNormalization(axis=3))
         model.add(UpSampling2D((4, 4)))
-        model.add(Conv2D(64, (3, 3), activation='relu', padding='same'))
+        # model.add(Conv2D(64, (3, 3), activation='relu', padding='same'))
         model.add(Conv2D(32, (3, 3), activation='relu', padding='same'))
-        model.add(UpSampling2D((4, 4)))
-        model.add(Conv2D(8, (3, 3), activation='relu', padding='same'))
-        model.add(UpSampling2D((2, 2)))
+        model.add(Dropout(0.2))
+        model.add(BatchNormalization(axis=3))
+        # model.add(UpSampling2D((4, 4)))
+        # model.add(Conv2D(8, (3, 3), activation='relu', padding='same'))
+        model.add(UpSampling2D((8, 8)))
         model.add(Conv2D(2, (3, 3), activation='tanh', padding='same'))
         return model
 
