@@ -1,0 +1,6 @@
+baseline: 
+eta 0.001 
+shuffle flase
+epochs 2
+
+

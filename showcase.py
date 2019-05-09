@@ -6,15 +6,15 @@ from skimage import color
 from colorizer import Colorizer, DatasetIterator
 
 if __name__ == "__main__":
-    orignal_image_folder = 'datasets/preprocessed_9000'
+    orignal_image_folder = 'datasets/preprocessed_1000'
 
     filenames = [os.path.join(orignal_image_folder, record) for record in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
 
     n_epochs = 1
-    batch_size = 10
+    batch_size = 1
 
-    iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=True)
+    iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=False)
     colorizer = Colorizer(iterator)
     new_image_node, example_node = colorizer.showcase()
 
@@ -30,7 +30,9 @@ if __name__ == "__main__":
             (batch_size, 299, 299, 2))
 
         for i in range(batch_size):
+
             new_ab = new_ab_list[i].reshape((299, 299, 2))
+            print(new_ab)
             new_ab = (new_ab)*127
 
             l_channel = l_channel_list[i]

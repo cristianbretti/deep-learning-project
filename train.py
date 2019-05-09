@@ -12,10 +12,10 @@ if __name__ == "__main__":
 
     n_tot = 1000
     n_epochs = 2
-    batch_size = 100
-    learning_rate = 0.001
+    batch_size = 50
+    learning_rate = 0.0001
 
-    iterator = DatasetIterator(filenames, n_epochs, batch_size)
+    iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=True)
     colorizer = Colorizer(iterator, learning_rate)
     optimizer, loss_node = colorizer.training_op()
 
@@ -35,18 +35,18 @@ if __name__ == "__main__":
         try:
             while True:
                 if not count % n_tot:
+                    epoch += 1
+                    count = 0
                     print("=== STARTED NEW EPOCH === number %d of %d" %
                           (epoch, n_epochs))
                     if save:
                         saver.save(sess, 'models/my-model')
                         print("model saved on epoch %d" % epoch)
-                    epoch += 1
-                    count = 0
 
                 _, loss = sess.run(
                     [optimizer, loss_node])
 
-                if not count % (2 * batch_size):
+                if not count % (1 * batch_size):
                     print("batch with count %d had loss: %f" % (count, loss))
                 losses.append(loss)
                 count += batch_size

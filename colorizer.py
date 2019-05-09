@@ -7,7 +7,7 @@ from tensorflow.keras.models import Sequential
 
 
 class Colorizer():
-    def __init__(self, iterator, learning_rate):
+    def __init__(self, iterator, learning_rate=0.001):
         self.iterator = iterator
         self.batch_size = self.iterator.batch_size
         self.learning_rate = learning_rate
@@ -42,7 +42,7 @@ class Colorizer():
         model.add(UpSampling2D((4, 4)))
         model.add(Conv2D(8, (3, 3), activation='relu', padding='same'))
         model.add(UpSampling2D((2, 2)))
-        model.add(Conv2D(2, (3, 3), activation='relu', padding='same'))
+        model.add(Conv2D(2, (3, 3), activation='tanh', padding='same'))
         return model
 
     def upscale(self, predicted):
