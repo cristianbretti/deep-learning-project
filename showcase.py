@@ -6,7 +6,7 @@ from skimage import color
 from colorizer import Colorizer, DatasetIterator
 
 if __name__ == "__main__":
-    orignal_image_folder = 'datasets/preprocessed_old'
+    orignal_image_folder = 'datasets/preprocessed_9000'
 
     filenames = [os.path.join(orignal_image_folder, record) for record in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
@@ -44,9 +44,13 @@ if __name__ == "__main__":
             new_lab_image = np.concatenate((l_channel, new_ab), axis=2)
             new_image = color.lab2rgb(new_lab_image)
 
-            plt.subplot(121)
+            plt.subplot(131)
             plt.imshow(real_image)
 
-            plt.subplot(122)
+            plt.subplot(132)
             plt.imshow(new_image)
+
+            plt.subplot(133)
+            plt.imshow(l_channel.reshape((299, 299)), cmap='gray')
+
             plt.show()

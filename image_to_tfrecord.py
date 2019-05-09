@@ -159,13 +159,6 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
     # For instance, if num_shards = 128, and the num_threads = 2, then the first
     # thread would produce shards [0, 64).
 
-    model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
-        include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
-    model.trainable = False
-    print("Load model done")
-    print("time taken")
-    print(datetime.now() - zero_time)
-
     num_threads = len(ranges)
     assert not num_shards % num_threads
     num_shards_per_batch = int(num_shards / num_threads)
@@ -174,6 +167,13 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
                                ranges[thread_index][1],
                                num_shards_per_batch + 1).astype(int)
     num_files_in_thread = ranges[thread_index][1] - ranges[thread_index][0]
+
+    model = tf.keras.applications.inception_resnet_v2.InceptionResNetV2(
+        include_top=False, weights='imagenet', input_tensor=None, input_shape=(299, 299, 3), pooling=None)
+    model.trainable = False
+    print("Load model done")
+    print("time taken")
+    print(datetime.now() - zero_time)
 
     counter = 0
     for s in range(num_shards_per_batch):
@@ -259,8 +259,8 @@ def main(output_directory, num_shards):
     with open('datasets/tiny-imagenet-200/wnids.txt', 'r') as f:
         folder_names = f.readlines()
         orig_img_paths = []
-        start = 0
-        how_many = 1  # 2
+        start = 11
+        how_many = 9
         for i in range(start, start + how_many):
             orignal_image_folder = 'datasets/tiny-imagenet-200/train/' + \
                 folder_names[i].strip() + '/images'

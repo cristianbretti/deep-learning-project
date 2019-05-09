@@ -7,9 +7,10 @@ from tensorflow.keras.models import Sequential
 
 
 class Colorizer():
-    def __init__(self, iterator):
+    def __init__(self, iterator, learning_rate):
         self.iterator = iterator
         self.batch_size = self.iterator.batch_size
+        self.learning_rate = learning_rate
 
         self.resnet_preprocessed_shape = (self.batch_size, 8, 8, 1536)
         self.out_network_shape = (self.batch_size, 299, 299, 2)
@@ -20,6 +21,7 @@ class Colorizer():
     def _build_upscale(self):
         """
         Upscale Network architecture
+        input   = (8, 8, 1536)
         layer_1 = (8, 8, 256)
         layer_2 = (8, 8, 128)
         layer_3 = (32, 32, 128)   # UPSAMPLE
@@ -64,7 +66,7 @@ class Colorizer():
         next_example = self.iterator.get_next()
         loss = self.loss_function(next_example)
         optimizer = tf.train.AdamOptimizer(
-            learning_rate=0.00001).minimize(loss)
+            learning_rate=self.learning_rate).minimize(loss)
         return optimizer, loss
 
     def showcase(self):
