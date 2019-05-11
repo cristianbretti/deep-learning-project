@@ -12,10 +12,11 @@ class Colorizer():
         self.batch_size = self.iterator.batch_size
         self.learning_rate = learning_rate
 
+        self.n_classes = 289
+
         self.resnet_preprocessed_shape = (self.batch_size, 8, 8, 1536)
-        self.ab_channel_real_shape = (self.batch_size, 299, 299, 2)
-        self.out_network_shape = (self.batch_size, 299, 299, 289)
-        self.out_image_size = (299, 299)
+        self.labels_shape = (self.batch_size, 128, 128)
+        self.out_network_shape = (self.batch_size, 128, 128, self.n_classes)
 
         self._upscale = self._build_upscale()
 
@@ -43,18 +44,13 @@ class Colorizer():
         model.add(Dropout(0.2))
         model.add(UpSampling2D((2, 2)))
 
-        model.add(Conv2D(289, (3, 3), padding='same'))
+        model.add(Conv2D(self.n_classes, (3, 3), padding='same'))
+        model.add(UpSampling2D((2, 2)))
 
         return model
 
-    def upscale(self, predicted):
-        upscaled = self._upscale(predicted)
-        new_image = tf.image.resize_nearest_neighbor(
-            upscaled, self.out_image_size)
-        return new_image
-
     def loss_function(self, predicted, labels):
-        new_image = self.upscale(predicted)
+        new_image = self._upscale(predicted)
         loss = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits_v2(labels, new_image))
         return loss
@@ -64,15 +60,15 @@ class Colorizer():
         predicted = example['predicted'].values
         predicted = tf.reshape(predicted, self.resnet_preprocessed_shape)
 
-        one_hot = example['one_hot'].values
-        one_hot = tf.reshape(
-            one_hot, self.out_network_shape)
-
+        labels = example['labels'].values
+        labels = tf.reshape(labels, self.labels_shape)
+        labels = tf.cast(labels, tf.int32)
+        one_hot = tf.one_hot(labels, self.n_classes)
         return predicted, one_hot
 
     def training_op(self):
-        predicted, one_hot = self.prepare_next_data_batch()
-        loss = self.loss_function(predicted, one_hot)
+        predicted, one_hot_labels = self.prepare_next_data_batch()
+        loss = self.loss_function(predicted, one_hot_labels)
         optimizer = tf.train.AdamOptimizer(
             learning_rate=self.learning_rate).minimize(loss)
         return optimizer, loss
@@ -81,7 +77,7 @@ class Colorizer():
         example = self.iterator.get_next()
         predicted = example['predicted'].values
         predicted = tf.reshape(predicted, self.resnet_preprocessed_shape)
-        new_image = self.upscale(predicted)
+        new_image = self._upscale(predicted)
         new_image = tf.nn.softmax(new_image)
         return new_image, example
 
@@ -100,6 +96,9 @@ class Colorizer():
         bins = np.argmax(bins, axis=3).reshape(
             bins.shape[0], bins.shape[1], bins.shape[2], 1)
 
+        return self.bin_to_ab(bins)
+
+    def bin_to_ab(self, bins):
         a_values = np.floor(bins / 17) * 15
         b_values = np.mod(bins, 17) * 15
 
@@ -114,7 +113,6 @@ class DatasetIterator():
             'filename': tf.FixedLenFeature((), tf.string, default_value=""),
             'l_channel': tf.VarLenFeature(dtype=tf.float32),
             'labels': tf.VarLenFeature(dtype=tf.float32),
-            'one_hot': tf.VarLenFeature(dtype=tf.float32),
             'predicted': tf.VarLenFeature(dtype=tf.float32),
         }
         self.filenames = filenames

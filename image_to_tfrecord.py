@@ -64,7 +64,7 @@ def _float_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
-def _convert_to_example(filename, l_channel, one_hot, predicted_data):
+def _convert_to_example(filename, l_channel, labels, predicted_data):
     """Build an Example proto for an example.
 
     Args:
@@ -80,7 +80,7 @@ def _convert_to_example(filename, l_channel, one_hot, predicted_data):
     example = tf.train.Example(features=tf.train.Features(feature={
         'filename': _bytes_feature(tf.compat.as_bytes(os.path.basename(filename))),
         'l_channel': _float_feature(l_channel.flatten()),
-        'one_hot': _float_feature(one_hot.flatten()),
+        'labels': _float_feature(labels.flatten()),
         'predicted': _float_feature(predicted_data.flatten()),
     }))
     return example
@@ -97,17 +97,19 @@ class ImageCoder(object):
         self._small_image = tf.placeholder(dtype=tf.string)
         temp = tf.image.decode_jpeg(self._small_image, channels=3)
         temp = tf.reshape(temp, (1, 64, 64, 3))
-        big = tf.image.resize_nearest_neighbor(temp, (299, 299))
-        self._big_image = tf.reshape(big, (299, 299, 3))
+        out_image = tf.image.resize_nearest_neighbor(temp, (128, 128))
+        self._out_image = tf.reshape(out_image, (128, 128, 3))
 
-        grayscaled_temp = tf.image.rgb_to_grayscale(self._big_image)
+        big = tf.image.resize_nearest_neighbor(temp, (299, 299))
+        big_image = tf.reshape(big, (299, 299, 3))
+        grayscaled_temp = tf.image.rgb_to_grayscale(big_image)
         stacked = tf.image.grayscale_to_rgb(grayscaled_temp)
         res = tf.cast(stacked, dtype=tf.float32)
         res = 2 * res / 255 - 1  # normalize between (-1, 1)
-        self._gray_stacked = tf.reshape(res, [-1, 299, 299, 3])
+        self._gray_stacked = tf.reshape(res, (-1, 299, 299, 3))
 
     def resize_and_grayscale(self, image_data):
-        image, stacked = self._sess.run([self._big_image, self._gray_stacked],
+        image, stacked = self._sess.run([self._out_image, self._gray_stacked],
                                         feed_dict={self._small_image: image_data})
         return image, stacked
 
@@ -132,6 +134,9 @@ def _process_image(filename, coder, model):
 
     if model:
         predicted_data = model.predict(gray_stacked)
+    else:
+        predicted_data = np.zeros((3, 3))
+        print("!!!!!!!!!!!NO MODEL!!!!!!!!!!")
 
     lab = color.rgb2lab(image).astype(np.float32)
     l_channel = 2 * lab[:, :, 0] / 100 - 1
@@ -140,15 +145,9 @@ def _process_image(filename, coder, model):
     ab_channels = ab_channels + 127  # set values between 0 and 254
     ab_channels = np.floor(ab_channels / 15)
     labels = ab_channels[:, :, 0] * 17 + ab_channels[:, :, 1]
-
-    # make one hot
     labels = labels.astype(int)
-    one_hot_labels = np.zeros((299, 299, 289))
-    for i in range(299):
-        for j in range(299):
-            one_hot_labels[i][j][labels[i, j]] = 1
 
-    return l_channel, one_hot_labels, predicted_data
+    return l_channel, labels, predicted_data
 
 
 def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames, num_shards, output_directory):
@@ -201,11 +200,11 @@ def _process_image_files_batch(coder, thread_index, ranges, name, orig_filenames
         for i in files_in_shard:
             orig_filename = orig_filenames[i]
 
-            l_channel, one_hot, predicted_data = _process_image(
+            l_channel, labels, predicted_data = _process_image(
                 orig_filename, coder, model)
 
             example = _convert_to_example(
-                orig_filename, l_channel, one_hot, predicted_data)
+                orig_filename, l_channel, labels, predicted_data)
             writer.write(example.SerializeToString())
             shard_counter += 1
             counter += 1
