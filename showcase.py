@@ -15,13 +15,13 @@ if __name__ == "__main__":
     real    0m47.679s
     user    2m11.769s
     """
-    orignal_image_folder = 'datasets/preprocessed_1000'
+    orignal_image_folder = 'datasets/preprocessed_test'
 
     filenames = [os.path.join(orignal_image_folder, record) for record in os.listdir(
         orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, record))]
 
     n_epochs = 1
-    batch_size = 15
+    batch_size = 4
 
     iterator = DatasetIterator(filenames, n_epochs, batch_size, shuffle=True)
     colorizer = Colorizer(iterator)
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     saver = tf.train.Saver()
     with tf.Session() as sess:
-        saver.restore(sess, 'models/my-model')
+        saver.restore(sess, 'models/model_big/my-model')
 
         new_ab_list, example = sess.run([new_image_node, example_node])
 
