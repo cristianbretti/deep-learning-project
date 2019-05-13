@@ -270,14 +270,18 @@ def main(output_directory, num_shards):
         folder_names = f.readlines()
         orig_img_paths = []
         start = 0
-        how_many = 20
+        how_many = 1
         for i in range(start, start + how_many):
-            orignal_image_folder = 'datasets/tiny-imagenet-200/train/' + \
-                folder_names[i].strip() + '/images'
+            # orignal_image_folder = 'datasets/tiny-imagenet-200/train/' + \
+            #     folder_names[i].strip() + '/images'
+            # orignal_image_folder = 'datasets/validation_images'
+            # orignal_image_folder = 'datasets/validation_not_related'
+            orignal_image_folder = 'datasets/test/color'
+
             orig_img_paths += [os.path.join(orignal_image_folder, im) for im in os.listdir(
                 orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, im))]
 
-        _process_image_files("train", orig_img_paths,
+        _process_image_files("test", orig_img_paths,
                              num_shards, output_directory)
 
         print("Started at %d and did %d folders, last one was %s" %
@@ -289,4 +293,4 @@ if __name__ == '__main__':
         print("Usage image_to_tfrecord <num partitions (multiples of 4)>")
     else:
         zero_time = datetime.now()
-        main('datasets/preprocessed', int(sys.argv[1]))
+        main('datasets/preprocessed_test', int(sys.argv[1]))
