@@ -61,12 +61,6 @@ if __name__ == "__main__":
             new_image = np.clip(cv2.resize(new_image, dsize=(
                 299, 299), interpolation=cv2.INTER_CUBIC), 0, 1)
 
-            print(np.max(real_image))
-            print(np.min(real_image))
-
-            print(np.max(new_image))
-            print(np.min(new_image))
-
             plt.subplot(131)
             plt.imshow(real_image)
 
