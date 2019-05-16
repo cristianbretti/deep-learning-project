@@ -9,8 +9,10 @@ if __name__ == "__main__":
     words = g.readlines()
     val_annotations = h.readlines()
 
-    for i in range(20, len(folder_names)):
-        folder = folder_names[i].strip()
+    # for i in range(20, len(folder_names)):
+    for i in range(1):
+        # folder = folder_names[i].strip()
+        folder = 'n02129165'
         name = ''
         for w in words:
             w_folder_list = w.split()
@@ -22,6 +24,5 @@ if __name__ == "__main__":
             annotation_list = annotation.split()
             if annotation_list[1] == folder:
                 copyfile('datasets/tiny-imagenet-200/val/images/' +
-                         annotation_list[0], 'datasets/validation_not_related/' + name + '-' + str(count) + '.JPEG')
+                         annotation_list[0], 'datasets/cat_val/' + name + '-' + str(count) + '.JPEG')
                 count += 1
-                break

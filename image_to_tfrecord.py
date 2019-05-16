@@ -276,7 +276,13 @@ def main(output_directory, num_shards):
             #     folder_names[i].strip() + '/images'
             # orignal_image_folder = 'datasets/validation_images'
             # orignal_image_folder = 'datasets/validation_not_related'
-            orignal_image_folder = 'datasets/test/color'
+            # orignal_image_folder = 'datasets/test/color'
+            # if i == 0:
+            #     orignal_image_folder = 'datasets/tiny-imagenet-200/train/n02129165/images'  # tiger cat
+            # else:
+            #     orignal_image_folder = 'datasets/tiny-imagenet-200/train/n02124075/images'  # Egyptian cat
+
+            orignal_image_folder = 'datasets/cat_val/'
 
             orig_img_paths += [os.path.join(orignal_image_folder, im) for im in os.listdir(
                 orignal_image_folder) if os.path.isfile(os.path.join(orignal_image_folder, im))]
@@ -293,4 +299,4 @@ if __name__ == '__main__':
         print("Usage image_to_tfrecord <num partitions (multiples of 4)>")
     else:
         zero_time = datetime.now()
-        main('datasets/preprocessed_test', int(sys.argv[1]))
+        main('datasets/preprocessed_cat_val', int(sys.argv[1]))

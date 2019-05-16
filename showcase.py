@@ -29,7 +29,9 @@ if __name__ == "__main__":
 
     saver = tf.train.Saver()
     with tf.Session() as sess:
-        saver.restore(sess, 'models/model_big/my-model')
+        saver.restore(sess, 'models/my-model')
+
+        sess.run(iterator.initializer())
 
         new_ab_list, example = sess.run([new_image_node, example_node])
 

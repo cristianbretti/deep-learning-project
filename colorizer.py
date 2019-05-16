@@ -3,6 +3,7 @@ import tensorflow as tf
 from skimage import color
 
 from tensorflow.keras.layers import Conv2D, UpSampling2D, InputLayer, BatchNormalization, Dropout, Activation, Softmax
+from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import Sequential
 
 
@@ -20,6 +21,10 @@ class Colorizer():
 
         self._upscale = self._build_upscale()
 
+    def set_iterator(self, iterator):
+        self.iterator = iterator
+        self.batch_size = self.iterator.batch_size
+
     def _build_upscale(self):
         """
         Upscale Network architecture
@@ -34,17 +39,20 @@ class Colorizer():
         model.add(BatchNormalization(axis=3))
         model.add(Dropout(0.2))
 
-        model.add(Conv2D(768, (3, 3), activation='relu', padding='same'))
+        model.add(Conv2D(768, (3, 3), activation='relu',
+                         padding='same', kernel_regularizer=l2(0.01)))
         model.add(BatchNormalization(axis=3))
         model.add(Dropout(0.2))
         model.add(UpSampling2D((4, 4)))
 
-        model.add(Conv2D(384, (3, 3), activation='relu', padding='same'))
+        model.add(Conv2D(384, (3, 3), activation='relu',
+                         padding='same', kernel_regularizer=l2(0.01)))
         model.add(BatchNormalization(axis=3))
         model.add(Dropout(0.2))
         model.add(UpSampling2D((2, 2)))
 
-        model.add(Conv2D(self.n_classes, (3, 3), padding='same'))
+        model.add(Conv2D(self.n_classes, (3, 3), padding='same',
+                         kernel_regularizer=l2(0.01)))
         model.add(UpSampling2D((2, 2)))
 
         return model
@@ -108,7 +116,7 @@ class Colorizer():
 
 
 class DatasetIterator():
-    def __init__(self, filenames, n_epochs, batch_size=100, shuffle=True):
+    def __init__(self, filenames, batch_size=100, shuffle=True):
         self.keys_to_features = {
             'filename': tf.FixedLenFeature((), tf.string, default_value=""),
             'l_channel': tf.VarLenFeature(dtype=tf.float32),
@@ -116,19 +124,20 @@ class DatasetIterator():
             'predicted': tf.VarLenFeature(dtype=tf.float32),
         }
         self.filenames = filenames
-        self.n_epochs = n_epochs
         self.batch_size = batch_size
 
         dataset = tf.data.TFRecordDataset(filenames)
         dataset = dataset.map(self.parser)
         if shuffle:
             dataset = dataset.shuffle(buffer_size=1000)
-        dataset = dataset.batch(self.batch_size)
-        self.dataset = dataset.repeat(self.n_epochs)
-        self.iterator = self.dataset.make_one_shot_iterator()
+        self.dataset = dataset.batch(self.batch_size)
+        self.iterator = self.dataset.make_initializable_iterator()
 
     def get_next(self):
         return self.iterator.get_next()
+
+    def initializer(self):
+        return self.iterator.initializer
 
     def parser(self, record):
         return tf.parse_single_example(record, self.keys_to_features)
